@@ -3,7 +3,22 @@ env:
   browser: true
   es6: true
   jquery: true
+  jest: true
 
 rules:
   no-unused-vars:
+    - off
+  quotes:
+    - off
+  comma-dangle:
+    - off
+  padded-blocks:
+    - off
+  space-infix-ops:
+    - off
+  operator-linebreak:
+    - off
+  no-return-assign:
+    - off
+  camelcase:
     - off

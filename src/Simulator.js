@@ -1,4 +1,7 @@
 import $ from 'jquery'
+import Device, { CLAMP_BOUNCE } from './models/Device'
+import EnergyLink from './models/EnergyLink'
+import History, {DEVICES, STATS} from './models/History'
 
 // stats
 let hasHotspot
@@ -16,18 +19,14 @@ const WIFI_DIRECT_LINK = 2
 const CELL_LINK = 3
 const INTERNET_LINK = 100
 
-const BT_RANGE = 10
-
-const WIFI_ENERGY = 10
-const BT_ENERGY = 1
-const WIFI_DIRECT_ENERGY = 10
-const CELL_ENERGY = 100
-
 const WIFI_HOTSPOT = "WIFI_HOTSPOT"
 const WIFI_CLIENT = "WIFI_CLIENT"
 
 const WIFI_DIRECT_HOTSPOT = "WIFI_DIRECT_HOTSPOT"
 const WIFI_DIRECT_CLIENT = "WIFI_DIRECT_CLIENT"
+
+const BLUETOOTH_ON = "BLUETOOTH_ON"
+const BLUETOOTH_OFF = "BLUETOOTH_OFF"
 
 const INTERNET_CONNECTED = "CELL_INTERNET"
 const NOT_INTERNET_CONNECTED = "CELL_NO_INTERNET"
@@ -37,153 +36,31 @@ const BT_RADIO = "BT_RADIO"
 const WIFI_DIRECT_RADIO = "WIFI_DIRECT_RADIO"
 const CELL_RADIO = "INTERNET_RADIO"
 
-const CLAMP_BOUNCE = "CLAMP_BOUNCE"
-
 const INFINITE_RANGE = -1
 
+// PRNG from https://gist.github.com/blixt/f17b47c62508be59987b
 /**
-* Store connection info of a link between two devices.
-* There is no distinction between the two devices.
-*/
-class Link {
-  constructor (left, right, type, delay, energy, cost) {
-    this.left = left
-    this.right = right
-    this.type = type
-    this.delay = delay
-    this.energy = energy
-    this.cost = cost
-  }
+ * Creates a pseudo-random value generator. The seed must be an integer.
+ *
+ * Uses an optimized version of the Park-Miller PRNG.
+ * http://www.firstpr.com.au/dsp/rand31/
+ */
+function Random (seed) {
+  this._seed = seed % 2147483647
+  if (this._seed <= 0) this._seed += 2147483646
 }
-
-class EnergyLink extends Link {
-  constructor (left, right, type, energy) {
-    super(left, right, type, 0, energy, 0)
-  }
+/**
+ * Returns a pseudo-random value between 1 and 2^32 - 2.
+ */
+Random.prototype.next = function () {
+  return this._seed = this._seed * 16807 % 2147483647
 }
-
-class Radio {
-  constructor (defaultState, range) {
-    this._enabled = defaultState
-    this._range = range
-  }
-
-  enable () {
-    this._enabled = false
-  }
-
-  disable () {
-    this._enabled = true
-  }
-
-  get enabled () {
-    return this._enabled
-  }
-
-  get range () {
-    return this._range
-  }
-}
-
-class Device {
-  constructor (x, y, clamp) {
-    this.radios = {}
-    this.modes = {}
-    this.moveTo(x, y)
-    this._dx = 0
-    this._dy = 0
-    this.clamp = clamp
-  }
-
-  moveTo (x, y) {
-    this._x = x
-    this._y = y
-  }
-
-  addRadio (name, range) {
-    this.radios[name] = new Radio(true, range)
-  }
-
-  radioMode (name, mode) {
-    this.modes[name] = mode
-  }
-
-  is (name, mode) {
-    if (this.modes[name] === mode) {
-      return true
-    }
-    return false
-  }
-
-  range (name) {
-    return this.radios[name].range
-  }
-
-  enableRadio (name) {
-    this.radios[name].enable()
-  }
-  disableRadio (name) {
-    this.radios[name].disable()
-  }
-  enabled (name) {
-    return this.radios[name].enabled
-  }
-
-  get x () {
-    return this._x
-  }
-  set x (pos) {
-    this._x = pos
-    switch (this.clamp) {
-      case CLAMP_BOUNCE:
-        if (this._x < 0) {
-          this._x = 0
-          this._dx *= -1
-        }
-        if (this._x > 500) {
-          this._x = 500
-          this._dx *= -1
-        }
-        break
-      default:
-        break
-    }
-  }
-
-  get y () {
-    return this._y
-  }
-  set y (pos) {
-    this._y = pos
-    switch(this.clamp) {
-      case CLAMP_BOUNCE:
-        if (this._y < 0) {
-          this._y = 0
-          this._dy *= -1
-        }
-        if (this._y > 500) {
-          this._y = 500
-          this._dy *= -1
-        }
-        break
-      default:
-        break
-    }
-  }
-
-  get dx () {
-    return this._dx
-  }
-  set dx (val) {
-    this._dx = val
-  }
-
-  get dy () {
-    return this._dy
-  }
-  set dy (val) {
-    this._dy = val
-  }
+/**
+ * Returns a pseudo-random floating point number in range [0, 1).
+ */
+Random.prototype.nextFloat = function (opt_minOrMax, opt_max) {
+  // We know that result of next() will be 1 to 2147483646 (inclusive).
+  return (this.next() - 1) / 2147483646
 }
 
 /**
@@ -191,17 +68,33 @@ class Device {
 */
 class Simulator {
 
-  constructor (context) {
+  constructor (context, seed = 1) {
     this.ctx = context
     this.id = this.ctx.getImageData(0, 0, 1, 1)
     this.intervalid = -1
+    this.running = false
+
+    this.prng = new Random(seed)
+    this.history = new History()
   }
 
-  generate (width, height, count, hotspotFraction, hotspotRange, dHotspotFraction, internetFraction) {
+  generate (
+    width,
+    height,
+    count,
+    hotspotFraction,
+    hotspotRange,
+    dHotspotFraction,
+    dHotspotRange,
+    btFraction,
+    btRange,
+    wifiPower,
+    wifiDPower,
+    btPower,
+    cellPower,
+    internetFraction) {
 
-    if (this.intervalid !== -1) {
-      clearInterval(this.intervalid)
-    }
+    this.pause()
 
     this.width = width
     this.height = height
@@ -209,19 +102,26 @@ class Simulator {
     this.wifiHotspotFraction = hotspotFraction
     this.wifiHotspotRange = hotspotRange
     this.wifiDirectHotspotFraction = dHotspotFraction
+    this.wifiDirectHotspotRange = dHotspotRange
+    this.bluetoothFraction = btFraction
+    this.bluetoothRange = btRange
+    this.wifiPower = wifiPower
+    this.wifiDirectPower = wifiDPower
+    this.bluetoothPower = btPower
+    this.cellPower = cellPower
     this.internetFraction = internetFraction
 
     this.links = []
     this.devices = []
 
     for (let counter = 0; counter < this.count; counter++) {
-      let x = Math.floor(Math.random() * 500) // TODO: globals
-      let y = Math.floor(Math.random() * 500)
+      let x = Math.floor(this.prng.nextFloat() * this.width)
+      let y = Math.floor(this.prng.nextFloat() * this.height)
 
       let device = new Device(x, y, CLAMP_BOUNCE)
 
-      if (Math.floor(Math.random() * 100) < hotspotFraction) {
-        let range = Math.floor(Math.random() * hotspotRange) + (2 / 3 * hotspotRange)
+      if (Math.floor(this.prng.nextFloat() * 100) < hotspotFraction) {
+        let range = Math.floor(this.prng.nextFloat() * hotspotRange) + (2 / 3 * hotspotRange)
         device.addRadio(WIFI_RADIO, range)
         device.radioMode(WIFI_RADIO, WIFI_HOTSPOT)
       } else {
@@ -229,8 +129,10 @@ class Simulator {
         device.radioMode(WIFI_RADIO, WIFI_CLIENT)
       }
 
-      if (Math.floor(Math.random() * 100) < dHotspotFraction) {
-        let range = Math.floor(Math.random() * hotspotRange) + (2/3 * hotspotRange)
+      if (Math.floor(this.prng.nextFloat() * 100) < dHotspotFraction) {
+        let range = Math.floor(
+          this.prng.nextFloat() * this.wifiDirectHotspotRange)
+          + (2/3 * hotspotRange)
         device.addRadio(WIFI_DIRECT_RADIO, range)
         device.radioMode(WIFI_DIRECT_RADIO, WIFI_DIRECT_HOTSPOT)
       } else {
@@ -238,7 +140,16 @@ class Simulator {
         device.radioMode(WIFI_DIRECT_RADIO, WIFI_DIRECT_CLIENT)
       }
 
-      if (Math.floor(Math.random() * 100) < internetFraction) {
+      if (Math.floor(this.prng.nextFloat() * 100) < btFraction) {
+        let range = Math.floor(this.prng.nextFloat() * btRange) + (2 / 3 * btRange)
+        device.addRadio(BT_RADIO, range)
+        device.radioMode(BT_RADIO, BLUETOOTH_ON)
+      } else {
+        device.addRadio(BT_RADIO, 0)
+        device.radioMode(BT_RADIO, BLUETOOTH_OFF)
+      }
+
+      if (Math.floor(this.prng.nextFloat() * 100) < internetFraction) {
         device.addRadio(CELL_RADIO, INFINITE_RANGE)
         device.radioMode(CELL_RADIO, INTERNET_CONNECTED)
       } else {
@@ -251,6 +162,10 @@ class Simulator {
   }
 
   run (continuous) {
+    if (this.running) {
+      this.pause()
+    }
+    this.running = true
     if (continuous === false) {
       this.frame()
     } else {
@@ -259,6 +174,7 @@ class Simulator {
   }
 
   pause () {
+    this.running = false
     clearInterval(this.intervalid)
   }
 
@@ -288,8 +204,8 @@ class Simulator {
   }
 
   moveDevice (device) {
-    let xStep = (Math.random() * 0.2) - 0.1
-    let yStep = (Math.random() * 0.2) - 0.1
+    let xStep = (this.prng.nextFloat() * 0.2) - 0.1
+    let yStep = (this.prng.nextFloat() * 0.2) - 0.1
 
     device.dx += xStep
     device.dy += yStep
@@ -342,14 +258,14 @@ class Simulator {
       for (let counterRight in hotspots) {
         let deviceRight = hotspots[counterRight]
 
-        // TODO: figure out where this bug comes from
+        // TODO: figure out where this bug comes from:
         // Wifi is self-linking, which means that every device is
         // being reported as a hotspot of itself.
         // We remove self-links here, for now.
 
         if (deviceLeft !== deviceRight) {
           this.links.push(new EnergyLink(
-            deviceLeft, deviceRight, WIFI_LINK, WIFI_ENERGY
+            deviceLeft, deviceRight, WIFI_LINK, this.wifiPower
           ))
         }
       }
@@ -363,7 +279,7 @@ class Simulator {
         if (deviceLeft.is(CELL_RADIO, INTERNET_CONNECTED)
             && deviceRight.is(CELL_RADIO, INTERNET_CONNECTED)) {
           this.links.push(new EnergyLink(
-            deviceLeft, deviceRight, INTERNET_LINK, CELL_ENERGY
+            deviceLeft, deviceRight, INTERNET_LINK, this.cellPower
           ))
         }
       }
@@ -376,7 +292,7 @@ class Simulator {
       for (let counterRight = counterLeft + 1; counterRight < this.devices.length; counterRight++) {
         let deviceRight = this.devices[counterRight]
         let distance = Math.sqrt(Math.pow(deviceLeft.x - deviceRight.x, 2) + Math.pow(deviceLeft.y - deviceRight.y, 2))
-        
+
         let rangeLimit = 0
         let canHazHotspot = false
 
@@ -391,7 +307,7 @@ class Simulator {
         if (canHazHotspot) {
           if (distance < rangeLimit) {
             this.links.push(new EnergyLink(
-              deviceLeft, deviceRight, WIFI_DIRECT_LINK, WIFI_DIRECT_ENERGY
+              deviceLeft, deviceRight, WIFI_DIRECT_LINK, this.wifiDirectPower
             ))
           }
         }
@@ -406,10 +322,14 @@ class Simulator {
       for (let counterRight = counterLeft + 1; counterRight < this.devices.length; counterRight++) {
         let deviceRight = this.devices[counterRight]
         let distance = Math.sqrt(Math.pow(deviceLeft.x - deviceRight.x, 2) + Math.pow(deviceLeft.y - deviceRight.y, 2))
-        if (distance < BT_RANGE) {
-          this.links.push(new EnergyLink(
-            deviceLeft, deviceRight, BT_LINK, BT_ENERGY
-          ))
+        if (deviceLeft.is(BT_RADIO, BLUETOOTH_ON) &&
+            deviceRight.is(BT_RADIO, BLUETOOTH_ON)) {
+          if (distance < deviceLeft.range(BT_RADIO) &&
+              distance < deviceRight.range(BT_RADIO)) {
+            this.links.push(new EnergyLink(
+              deviceLeft, deviceRight, BT_LINK, this.bluetoothPower
+            ))
+          }
         }
       }
     }
@@ -432,6 +352,7 @@ class Simulator {
     this.id.data[ALPHA_CHAN] = 255
 
     this.ctx.putImageData(this.id, device.x, device.y)
+
     if (device.is(WIFI_RADIO, WIFI_HOTSPOT) === true) {
       this.ctx.fillStyle = 'rgba(255, 10, 10, .2)'
       this.ctx.beginPath()
@@ -446,11 +367,14 @@ class Simulator {
       this.ctx.closePath()
       this.ctx.fill()
     }
-    this.ctx.fillStyle = 'rgba(10, 10, 255, .2)'
-    this.ctx.beginPath()
-    this.ctx.arc(device.x, device.y, BT_RANGE, 0, Math.PI * 2, true)
-    this.ctx.closePath()
-    this.ctx.fill()
+
+    if (device.is(BT_RADIO, BLUETOOTH_ON)) {
+      this.ctx.fillStyle = 'rgba(10, 10, 255, .2)'
+      this.ctx.beginPath()
+      this.ctx.arc(device.x, device.y, device.range(BT_RADIO), 0, Math.PI * 2, true)
+      this.ctx.closePath()
+      this.ctx.fill()
+    }
 
     if (device.is(CELL_RADIO, INTERNET_CONNECTED)) {
       this.ctx.beginPath()
@@ -523,8 +447,8 @@ class Simulator {
 
         for (let considerCounter in nodesToConsider) {
           let consider = nodesToConsider[considerCounter]
-          if (nodesVisited.indexOf(consider) === -1
-              && nodesToVisit.indexOf(consider) === -1) {
+          if (nodesVisited.indexOf(consider) === -1 &&
+              nodesToVisit.indexOf(consider) === -1) {
             nodesToVisit.push(consider)
           }
         }
@@ -542,6 +466,7 @@ class Simulator {
    */
   getUnconnectedDevices () {
     let unconnectedDevices = []
+
     for (let counter in this.devices) {
       let device = this.devices[counter]
       unconnectedDevices.push(device)
@@ -549,7 +474,7 @@ class Simulator {
 
     for (let counter in this.links) {
       let link = this.links[counter]
-      let index = -1;
+      let index = -1
       index = unconnectedDevices.indexOf(link.left)
       if (index !== -1) {
         unconnectedDevices.splice(index, 1)
@@ -564,6 +489,38 @@ class Simulator {
   }
 
   computeStats () {
+    let averages = [0, 0.0, 0, 0, 0, 0]
+    let count = 0
+    for (let entry of this.history.entries) {
+      count += 1
+      averages[0] += entry.get(STATS).get("wifi-hotspot-coverage")
+      averages[1] += entry.get(STATS).get("wifi-average-hotspots")
+      averages[2] += entry.get(STATS).get("wifi-average-clients")
+      averages[3] += entry.get(STATS).get("total-energy")
+      averages[4] += entry.get(STATS).get("unconnected")
+      averages[5] += entry.get(STATS).get("largest-local")
+    }
+
+    for (let i = 0; i < averages.length; i++) {
+      averages[i] = averages[i] / count
+    }
+
+    $('#stat-density').text(this.count)
+    $('#stat-wifi-hotspot-percent').text(this.wifiHotspotFraction)
+    $('#stat-wifi-hotspot-range').text(this.wifiHotspotRange)
+    $('#stat-wifi-hotspot-coverage').text(averages[0])
+    $('#stat-wifi-average-hotspots').text(averages[1])
+    $('#stat-wifi-average-clients').text(averages[2])
+    $('#stat-total-energy').text(averages[3])
+    $('#stat-unconnected').text(averages[4])
+    $('#stat-largest-local').text(averages[5])
+  }
+
+  /**
+   * Store a new entry in the simulator's history.
+   */
+
+  makeHistory () {
     let largestLocalMeshSize = 0
 
     hasHotspot = 0
@@ -589,8 +546,8 @@ class Simulator {
 
       // Find largest local mesh
       let currentLocalMeshSize = 0
-      if ((currentLocalMeshSize = this.getLocalMeshDevices(device).length)
-           > largestLocalMeshSize) {
+      if ((currentLocalMeshSize = this.getLocalMeshDevices(device).length) >
+          largestLocalMeshSize) {
         largestLocalMeshSize = currentLocalMeshSize
       }
     }
@@ -602,16 +559,22 @@ class Simulator {
       totalEnergy += link.energy
     }
 
-    $('#stat-density').text(this.count)
-    $('#stat-wifi-hotspot-percent').text(this.wifiHotspotFraction)
-    $('#stat-wifi-hotspot-range').text(this.wifiHotspotRange)
-    $('#stat-wifi-hotspot-coverage').text(((hasHotspot / this.count) * 100).toFixed(2))
-    $('#stat-wifi-average-hotspots').text((avgHotspots / hasHotspot).toFixed(2))
-    $('#stat-wifi-average-clients').text((avgClients / totalHotspots).toFixed(2))
-    $('#stat-total-energy').text(totalEnergy)
-    $('#stat-unconnected').text(this.getUnconnectedDevices().length)
-    $('#stat-largest-local').text(largestLocalMeshSize)
+    let entry = this.history
+      .startEntry()
+      .addDevices(this.devices)
+      .addStat("density", this.count)
+      .addStat("wifi-hotspot-percent", this.wifiHotspotFraction)
+      .addStat("wifi-hotspot-range", this.wifiHotspotRange)
+      .addStat("wifi-hotspot-coverage", ((hasHotspot / this.count) * 100))
+      .addStat("wifi-average-hotspots", (avgHotspots / hasHotspot))
+      .addStat("wifi-average-clients", (avgClients / totalHotspots))
+      .addStat("total-energy", totalEnergy)
+      .addStat("unconnected", this.getUnconnectedDevices().length)
+      .addStat("largest-local", largestLocalMeshSize)
+      .endEntry()
+
+    console.log(JSON.stringify([...entry.get(STATS)]))
   }
 }
 
-export default Simulator;
+export default Simulator

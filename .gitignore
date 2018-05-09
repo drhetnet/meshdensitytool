@@ -5,6 +5,8 @@
 node_modules
 package-lock.json
 yarn.lock
+build
 
 # Build files
 bundle.js
+build.zip

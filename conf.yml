@@ -8,4 +8,4 @@ meshdensitytool:
     wifiDirect:
       hotspotPercentage: 10
     internet:
-      sharerPercentage: 7
+      sharerPercentage: 5

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'
 
 class StatOutput extends React.Component {
   render () {
@@ -29,4 +29,4 @@ class AppStats extends React.Component {
   }
 }
 
-export default AppStats;
+export default AppStats

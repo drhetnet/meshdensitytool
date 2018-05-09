@@ -1,17 +1,15 @@
-import React from 'react';
-import ReactDOM from 'react-dom';
-import AppUI from './AppUI';
+import React from 'react'
+import ReactDOM from 'react-dom'
+import { shallow, mount, render } from 'enzyme';
+import AppUI from './AppUI'
 
 it('renders without crashing', () => {
-  const wrapper = document.createElement('div')
-  const div = (
+  const wrapper = shallow((
     <div>
-      <canvas id="canvas" width="500" height="500"></canvas>
-      <div id="root"></div>
+      <canvas id='canvas'></canvas>
+      <AppUI />
     </div>
-  )
-  ReactDOM.renderIntoDocument(wrapper)
-  ReactDOM.render(div, wrapper)
-  ReactDOM.render(<AppUI />, document.getElementById('root'));
-  ReactDOM.unmountComponentAtNode(wrapper);
-});
+  ))
+
+  expect(wrapper.contains("<canvas id='canvas'></canvas>"));
+})

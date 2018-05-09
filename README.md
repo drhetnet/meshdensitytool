@@ -1,3 +1,20 @@
+# meshdensitytool by RightMesh
+
+To run in development:
+
+    yarn install
+    npm start
+
+To build a static site:
+
+    npm run build
+
+The build directory can then be served.
+
+Documentation from `create-react-app` follows.
+
+---
+
 This project was bootstrapped with [Create React App](https://github.com/facebookincubator/create-react-app).
 
 Below you will find some information on how to perform common tasks.<br>

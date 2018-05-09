@@ -12,17 +12,9 @@ form {
   margin-top: 10px;
 }
 
-.control-btn {
-  margin-bottom: 5px;
-  width: 100px;
-  border: 1px solid DarkGray;
-  background-color: #1FAB81;
-  color: white;
-}
-
 .grid-container {
   display: grid;
-  grid-template-columns: 520px 520px 500px;
+  grid-template-columns: 520px 400px 500px;
   grid-template-rows: 500px 500px;
 }
 
@@ -34,6 +26,7 @@ form {
 .grid-history {
   grid-column: 3 / 4;
   grid-row: 1 / 2;
+  margin-left: 20px;
 }
 
 .grid-controls {
@@ -41,14 +34,9 @@ form {
   grid-row: 1 / 2;
 }
 
-.grid-regions {
-  grid-column: 1 / 2;
-  grid-row: 2 / 3;
-}
-
 .param-grid-container {
   display: grid;
-  grid-template-columns: 300px 200px;
+  grid-template-columns: 280px 100px;
   grid-template-rows: 25px;
   grid-auto-flow: row;
 }
@@ -58,4 +46,48 @@ form {
   grid-template-columns: 300px 200px;
   grid-template-rows: 25px;
   grid-auto-flow: row;
+}
+
+.app-ui-input-group {
+  border: 1px dashed white;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  margin-left: -5px;
+  margin-right: -5px;
+  padding: 5px;
+}
+
+#app-ui .control-btn, #app-ui .location-btn {
+  margin-bottom: 5px;
+  width: 180px;
+  margin-right: 10px;
+  border: 1px solid white;
+}
+
+#app-ui .control-btn {
+  background-color: #1FAB81;
+  color: white;
+}
+
+#app-ui .location-btn {
+  background-color: white;
+  color: #1FAB81;
+}
+
+#app-ui .control-btn:disabled {
+  background-color: grey;
+}
+
+.app-ui-wrapper {
+  display: grid;
+}
+
+.app-ui-init-controls {
+  background-color: #01434f;
+  color: white;
+  padding: 10px;
+}
+
+.app-ui-inputs {
+
 }

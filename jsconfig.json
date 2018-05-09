@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "*": ["src/*"],
+      "models/*": ["./src/models/*"],
+      "graphtools/*": ["./src/models/graphtools/*"]
+    }
+  }
+}
